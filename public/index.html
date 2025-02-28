@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Meeting Assistant</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background: #000;
+            color: #fff;
+            font-family: Arial, sans-serif;
+        }
+        
+        .container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+        }
+        
+        .transcript-box {
+            flex: 1;
+            background: #1a1a1a;
+            padding: 20px;
+            margin: 5px;
+            border-radius: 10px;
+            overflow-y: auto;
+            font-size: 6vw;
+            line-height: 1.4;
+        }
+        
+        .teleprompter {
+            flex: 1;
+            background: #2a2a2a;
+            margin: 5px;
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+            font-size: 5vw;
+        }
+        
+        .scrolling-text {
+            position: absolute;
+            white-space: pre-wrap;
+            transform: translateY(100%);
+            animation: scroll 15s linear infinite;
+        }
+        
+        @keyframes scroll {
+            0% { transform: translateY(100%); }
+            100% { transform: translateY(-100%); }
+        }
+        
+        @media (min-width: 600px) {
+            .transcript-box, .teleprompter {
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="transcript-box" id="transcript"></div>
+        <div class="teleprompter">
+            <div class="scrolling-text" id="aiResponse"></div>
+        </div>
+    </div>
+
+    <script>
+        const ws = new WebSocket(`wss://localhost:${config.port}`);
+        const transcriptDiv = document.getElementById('transcript');
+        const aiResponseDiv = document.getElementById('aiResponse');
+        
+        // Start audio capture (needs proper implementation)
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(stream => {
+                const mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.ondataavailable = e => {
+                    ws.send(JSON.stringify({ audio: Array.from(new Uint8Array(e.data)) }));
+                };
+                mediaRecorder.start(1000);
+            });
+        
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.transcript) {
+                transcriptDiv.innerHTML = data.transcript;
+            }
+            if (data.aiResponse) {
+                aiResponseDiv.textContent = data.aiResponse;
+                // Reset animation
+                aiResponseDiv.style.animation = 'none';
+                void aiResponseDiv.offsetWidth;
+                aiResponseDiv.style.animation = 'scroll 15s linear infinite';
+            }
+        };
+    </script>
+</body>
+</html>

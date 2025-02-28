@@ -1,0 +1,15 @@
+{
+  "name": "aistreamhelper",
+  "version": "1.0.0",
+  "description": "AI Stream Helper",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.13.0",
+    "@google-cloud/speech": "^6.2.0",
+    "openai": "^4.24.1"
+  }
+}
