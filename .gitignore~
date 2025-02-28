@@ -27,7 +27,6 @@ config.json
 .vscode/
 *.swp
 *.swo
-google-service-account.json
 
 # Debug files
 debug.log
