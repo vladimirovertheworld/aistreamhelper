@@ -51,3 +51,4 @@ coverage/
 # Local development
 .cache/
 .parcel-cache/
+.#*

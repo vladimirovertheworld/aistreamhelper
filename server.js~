@@ -1,23 +1,78 @@
+require('dotenv').config();
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const express = require('express');
+const WebSocket = require('ws');
+const { SpeechClient } = require('@google-cloud/speech');
+const recorder = require('node-record-lpcm16');
+const { OpenAI } = require('openai');
 
-// Load configuration
-const config = require('./config.json');
+const app = express();
 
-// SSL options
+// Initialize APIs
+const speechClient = new SpeechClient({ keyFilename: process.env.GOOGLE_KEY_PATH });
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// SSL setup
 const options = {
-  key: fs.readFileSync(config.sslKeyPath),
-  cert: fs.readFileSync(config.sslCertPath)
+  key: fs.readFileSync(process.env.SSL_KEY_PATH),
+  cert: fs.readFileSync(process.env.SSL_CERT_PATH),
 };
 
-// Create server
-const server = https.createServer(options, (req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/html' });
-  res.end('<h1>AI Stream Helper</h1><p>Server is running!</p>');
+const server = https.createServer(options, app);
+const wss = new WebSocket.Server({ server });
+
+// Audio recording
+const recording = recorder.record({
+  sampleRate: 16000,
+  channels: 1,
+  audioType: 'wav',
 });
 
-// Start server
-server.listen(config.port, () => {
-  console.log(`Server running at https://localhost:${config.port}/`);
+// Transcription handling
+let recognizeStream = null;
+let transcribedText = '';
+const ANCHOR_WORDS = ['ok, let\'s see', 'very nice question'];
+
+wss.on('connection', (ws) => {
+  console.log('New WebSocket connection');
+
+  recognizeStream = speechClient.streamingRecognize({
+    config: {
+      encoding: 'LINEAR16',
+      sampleRateHertz: 16000,
+      languageCode: 'en-US',
+      enableAutomaticPunctuation: true,
+    },
+    interimResults: true,
+  }).on('data', async (data) => {
+    const transcript = data.results[0].alternatives[0].transcript;
+    transcribedText = transcript;
+    ws.send(JSON.stringify({ transcript }));
+
+    if (ANCHOR_WORDS.some(word => transcript.toLowerCase().includes(word))) {
+      try {
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-3.5-turbo',
+          messages: [{
+            role: 'system',
+            content: 'You are a software developer and MLOps expert. Answer concisely.',
+          }, { role: 'user', content: transcribedText.split(' ').slice(-50).join(' ') }],
+        });
+        
+        ws.send(JSON.stringify({ 
+          aiResponse: completion.choices[0].message.content 
+        }));
+      } catch (error) {
+        console.error('OpenAI error:', error);
+      }
+    }
+  });
+
+  recording.stream().pipe(recognizeStream);
 });
+
+app.use(express.static('public'));
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+server.listen(process.env.PORT || 8443, () => console.log(`Server running at https://localhost:${process.env.PORT || 8443}/`));
