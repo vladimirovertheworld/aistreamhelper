@@ -43,7 +43,6 @@
   - Smooth animations and transitions
   - Custom scrollbars and visual elements
 
----
 
 ## Installation
 
@@ -55,7 +54,7 @@
 
 ### Setup
 1. Clone the repository:
-   
+  
    git clone https://github.com/vladimirovertheworld/aistreamhelper.git
    cd aistreamhelper
    npm install
@@ -73,11 +72,13 @@
     npm start
 
 ###   Usage
-
+`
     Open your browser:
-    https://localhost:8443/
-    Allow microphone access when prompted.
 
+    https://localhost:8443/
+`
+    Allow microphone access when prompted.
+`
     Speak into your microphone:
         Transcription appears in the top panel
         AI responses scroll in the teleprompter
@@ -97,7 +98,7 @@ aistreamhelper/
 ├── .env.example            # Environment variables template
 └── README.md               # This file
 ```
-   ```     "Very nice question"
+     "Very nice question"
 
 
 ## Dependencies
