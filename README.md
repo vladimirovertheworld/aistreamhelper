@@ -98,3 +98,52 @@ aistreamhelper/
 └── README.md               # This file
 ```
    ```     "Very nice question"
+
+
+## Dependencies
+
+### Core
+- `@google-cloud/speech`: Google Speech-to-Text API
+- `openai`: OpenAI GPT API
+- `node-record-lpcm16`: Audio recording
+
+### Web
+- `express`: Web server
+- `ws`: WebSocket communication
+
+---
+
+## Configuration
+
+### Environment Variables
+| Variable           | Description                          |
+|--------------------|--------------------------------------|
+| `GOOGLE_KEY_PATH`  | Path to Google service account JSON  |
+| `OPENAI_API_KEY`   | OpenAI API key                       |
+| `SSL_KEY_PATH`     | Path to SSL private key              |
+| `SSL_CERT_PATH`    | Path to SSL certificate              |
+| `PORT`             | Server port (default: 8443)          |
+
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+---
+
+## License
+
+MIT License
+
+---
+
+## Acknowledgments
+
+- Google Cloud Speech-to-Text API
+- OpenAI GPT API
+- Node.js ecosystem
