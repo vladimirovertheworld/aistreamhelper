@@ -23,80 +23,119 @@ const options = {
 const server = https.createServer(options, app);
 const wss = new WebSocket.Server({ server });
 
-// Audio processing constants
-const SAMPLE_RATE = 16000;
-const CHUNK_DURATION = 0.1; // 100ms
-const SAMPLES_PER_CHUNK = SAMPLE_RATE * CHUNK_DURATION;
+// Audio recording
+const recording = recorder.record({
+  sampleRate: 16000,
+  channels: 1,
+  audioType: 'wav',
+});
+
+// Transcription handling
+let recognizeStream = null;
+let finalTranscript = ''; // accumulate final results here
+const ANCHOR_WORDS = ['ok, let\'s see', 'very nice question'];
+
+// Track active AI requests
+let activeAIRequest = null;
 
 wss.on('connection', (ws) => {
   console.log('New WebSocket connection');
-  let recognizeStream = null;
-  let transcribedText = '';
-  let lastTriggerPosition = 0;
-  let triggerCount = 0;
-  const ANCHOR_WORDS = ['ok, let\'s see', 'very nice question'];
-  let activeAIRequest = null;
-
-  const audioStream = recorder.record({
-    sampleRate: SAMPLE_RATE,
-    channels: 1,
-    audioType: 'raw',
-    threshold: 0,
-    verbose: false
-  }).stream();
-
-  // Audio level calculation
-  let lastLevelUpdate = Date.now();
-  const levelUpdateInterval = 50; // Update every 50ms
-  
-  audioStream.on('data', (chunk) => {
-    // Calculate audio level
-    const samples = new Int16Array(chunk.buffer);
-    let sum = 0;
-    
-    for (let i = 0; i < samples.length; i++) {
-      const sample = samples[i] / 32768;
-      sum += sample * sample;
-    }
-    
-    const rms = Math.sqrt(sum / samples.length);
-    const db = 20 * Math.log10(rms + 1e-6); // Avoid log(0)
-    
-    // Throttle updates
-    if (Date.now() - lastLevelUpdate > levelUpdateInterval) {
-      ws.send(JSON.stringify({ 
-        audioLevel: {
-          rms: rms,
-          db: db,
-          peak: Math.max(...samples.map(s => Math.abs(s/32768)))
-        }
-      }));
-      lastLevelUpdate = Date.now();
-    }
-  });
 
   recognizeStream = speechClient.streamingRecognize({
     config: {
       encoding: 'LINEAR16',
-      sampleRateHertz: SAMPLE_RATE,
+      sampleRateHertz: 16000,
       languageCode: 'en-US',
       enableAutomaticPunctuation: true,
     },
     interimResults: true,
   }).on('data', async (data) => {
-    // ... existing transcription handling code ...
+    const result = data.results[0];
+    const transcript = result.alternatives[0].transcript;
+
+    // If the result is final, append it to finalTranscript, otherwise only update interim
+    let displayTranscript = finalTranscript;
+    if (result.isFinal) {
+      finalTranscript += transcript + ' ';
+      displayTranscript = finalTranscript;
+    } else {
+      displayTranscript += transcript;
+    }
+    
+    ws.send(JSON.stringify({ transcript: displayTranscript.trim() }));
+
+    // Check for anchor words in the current (final or interim) chunk
+    if (ANCHOR_WORDS.some(word => transcript.toLowerCase().includes(word))) {
+      try {
+        // Cancel previous request if still active
+        if (activeAIRequest) {
+          activeAIRequest.controller.abort();
+        }
+
+        // Create new AbortController for this request
+        const controller = new AbortController();
+        activeAIRequest = { controller };
+
+        // Send clearResponse message to client
+        ws.send(JSON.stringify({ clearResponse: true }));
+
+        // Get OpenAI response using the last 50 words of the final transcript
+        const words = finalTranscript.split(' ');
+        const recentWords = words.slice(-50).join(' ');
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-3.5-turbo',
+          messages: [{
+            role: 'system',
+            content: 'You are a software developer and MLOps expert. Answer concisely.',
+          }, { role: 'user', content: recentWords }],
+          stream: true,
+        }, { signal: controller.signal });
+
+        // Stream response to client
+        let fullResponse = '';
+        for await (const chunk of completion) {
+          const content = chunk.choices[0]?.delta?.content || '';
+          if (content) {
+            fullResponse += content;
+            ws.send(JSON.stringify({ aiResponse: fullResponse }));
+          }
+        }
+
+        // Clear active request flag
+        activeAIRequest = null;
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          console.error('OpenAI error:', error);
+          ws.send(JSON.stringify({ aiResponse: 'Error generating response.' }));
+        }
+      }
+    }
   });
 
-  audioStream.pipe(recognizeStream);
+  // Pipe audio data to Google Speech API
+  recording.stream().pipe(recognizeStream);
 
+  // Handle WebSocket close
   ws.on('close', () => {
     console.log('WebSocket connection closed');
-    audioStream.unpipe(recognizeStream);
-    if (recognizeStream) recognizeStream.end();
-    if (activeAIRequest) activeAIRequest.controller.abort();
+    if (recognizeStream) {
+      recognizeStream.end();
+    }
+    if (activeAIRequest) {
+      activeAIRequest.controller.abort();
+    }
   });
 });
 
+// Serve static files
 app.use(express.static('public'));
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-server.listen(process.env.PORT || 8443, () => console.log(`Server running at https://localhost:${process.env.PORT || 8443}/`));
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Start server
+const port = process.env.PORT || 8443;
+server.listen(port, () => {
+  console.log(`Server running at https://localhost:${port}/`);
+});
